@@ -1,0 +1,13 @@
+wandb
+fastai
+tensorboardX
+ffmpeg
+ffmpeg-python
+yt-dlp
+jupyterlab
+opencv-python
+Pillow
+--extra-index-url https://download.pytorch.org/whl/cu113
+torch
+torchvision
+ipywidgets

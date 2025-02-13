@@ -142,59 +142,126 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.post("/colorize/video")
 async def colorize_video(file: UploadFile = File(...)):
+    """Extracts frames from a video, colorizes each frame, reconstructs the video, and saves it."""
+
     if not file.content_type.startswith("video/"):
-        raise HTTPException(400, "Upload a video file (MP4, AVI, etc.)")
-
+        raise HTTPException(400, "Upload a video file (MP4, AVI)")
+    
     try:
-        temp_dir = tempfile.mkdtemp()
-        temp_video_path = os.path.join(temp_dir, file.filename)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = os.path.join(temp_dir, "input_video.mp4")
+            output_video_path = "static/videos/colorized_video.mp4"  # Save the output here for testing
 
-        with open(temp_video_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+            # Save the uploaded video
+            with open(video_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
 
-        cap = cv2.VideoCapture(temp_video_path)
-        if not cap.isOpened():
-            raise HTTPException(500, "Could not open video file")
+            # Extract frames
+            cap = cv2.VideoCapture(video_path)
+            frame_rate = int(cap.get(cv2.CAP_PROP_FPS))
+            frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-        frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps = cap.get(cv2.CAP_PROP_FPS)
+            frames = []
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                frames.append(frame)
+            cap.release()
 
-        output_video_path = os.path.join(temp_dir, "colorized_" + file.filename)
-        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        out = cv2.VideoWriter(output_video_path, fourcc, fps, (frame_width, frame_height))
+            # Process frames
+            colorized_frames = []
+            for frame in frames:
+                image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+                L_tensor = preprocess_image(image)
 
-        while cap.isOpened():
-            ret, frame = cap.read()
-            if not ret:
-                break
+                model.net_G.eval()
+                with torch.no_grad():
+                    model.setup_input(L_tensor)
+                    model.forward()
+                    fake_color = model.fake_color.detach()
+                    L = model.L
 
-            image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-            data = preprocess_image(image)
-            L_tensor = data["L"]
+                fake_imgs = lab_to_rgb(L, fake_color)
+                fake_imgs = (fake_imgs[0] * 255).astype(np.uint8)
+                colorized_frame = cv2.cvtColor(fake_imgs, cv2.COLOR_RGB2BGR)
+                colorized_frame = cv2.resize(colorized_frame, (frame_width, frame_height))
 
-            with torch.no_grad():
-                fake_color = model.net_G(L_tensor)
+                colorized_frames.append(colorized_frame)
 
-            fake_imgs = lab_to_rgb(L_tensor, fake_color)
-            fake_imgs = (fake_imgs[0] * 255).astype(np.uint8)
-            fake_imgs = cv2.resize(fake_imgs, (frame_width, frame_height))
+            # Reconstruct video
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(output_video_path, fourcc, frame_rate, (frame_width, frame_height))
 
-            colorized_frame = cv2.cvtColor(fake_imgs, cv2.COLOR_RGB2BGR)
-            out.write(colorized_frame)
+            for frame in colorized_frames:
+                out.write(frame)
+            out.release()
 
-        cap.release()
-        out.release()
-
-        return FileResponse(
-            output_video_path, 
-            media_type="video/mp4",
-            filename="colorized_output.mp4",  # Ensures browser treats it as a file
-        )
+            # Return processed video
+            return {
+                "message": "Video successfully colorized!",
+                "saved_file_path": output_video_path,  # Provide the saved file path
+                "download_url": f"/static/videos/colorized_video.mp4"
+            }
 
     except Exception as e:
-        print(f"Error during video processing: {e}")
-        raise HTTPException(500, f"Internal Server Error: {str(e)}")
+        print(f"Error processing video: {e}")
+        raise HTTPException(500, "Error processing video")
+# async def colorize_video(file: UploadFile = File(...)):
+#     if not file.content_type.startswith("video/"):
+#         raise HTTPException(400, "Upload a video file (MP4, AVI, etc.)")
+
+#     try:
+#         temp_dir = tempfile.mkdtemp()
+#         temp_video_path = os.path.join(temp_dir, file.filename)
+
+#         with open(temp_video_path, "wb") as buffer:
+#             shutil.copyfileobj(file.file, buffer)
+
+#         cap = cv2.VideoCapture(temp_video_path)
+#         if not cap.isOpened():
+#             raise HTTPException(500, "Could not open video file")
+
+#         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+#         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+#         fps = cap.get(cv2.CAP_PROP_FPS)
+
+#         output_video_path = os.path.join(temp_dir, "colorized_" + file.filename)
+#         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+#         out = cv2.VideoWriter(output_video_path, fourcc, fps, (frame_width, frame_height))
+
+#         while cap.isOpened():
+#             ret, frame = cap.read()
+#             if not ret:
+#                 break
+
+#             image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+#             data = preprocess_image(image)
+#             L_tensor = data["L"]
+
+#             with torch.no_grad():
+#                 fake_color = model.net_G(L_tensor)
+
+#             fake_imgs = lab_to_rgb(L_tensor, fake_color)
+#             fake_imgs = (fake_imgs[0] * 255).astype(np.uint8)
+#             fake_imgs = cv2.resize(fake_imgs, (frame_width, frame_height))
+
+#             colorized_frame = cv2.cvtColor(fake_imgs, cv2.COLOR_RGB2BGR)
+#             out.write(colorized_frame)
+
+#         cap.release()
+#         out.release()
+
+#         return FileResponse(
+#             output_video_path, 
+#             media_type="video/mp4",
+#             filename="colorized_output.mp4",  # Ensures browser treats it as a file
+#         )
+
+#     except Exception as e:
+#         print(f"Error during video processing: {e}")
+#         raise HTTPException(500, f"Internal Server Error: {str(e)}")
 
 
 

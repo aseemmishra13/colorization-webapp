@@ -15,6 +15,15 @@ from IPython.display import HTML
 from IPython.display import Image as ipythonimage
 import cv2
 import logging
+from fastapi import FastAPI, WebSocket
+from fastapi.responses import JSONResponse
+import os
+from pathlib import Path
+
+from websocket_manager import manager
+
+
+
 
 # adapted from https://www.pyimagesearch.com/2016/04/25/watermarking-images-with-opencv-and-python/
 def get_watermarked(pil_image: Image) -> Image:
@@ -300,6 +309,31 @@ class VideoColorizer:
                     str(img_path), render_factor=render_factor, post_process=post_process,watermarked=watermarked
                 )
                 color_image.save(str(colorframes_folder / img))
+    # async def _colorize_raw_frames(self, source_path: Path, render_factor: int = None, post_process: bool = True, watermarked: bool = True):
+    #     colorframes_folder = self.colorframes_root / (source_path.stem)
+    #     colorframes_folder.mkdir(parents=True, exist_ok=True)
+    #     self._purge_images(colorframes_folder)
+    #     bwframes_folder = self.bwframes_root / (source_path.stem)
+
+    #     total_frames = len(os.listdir(str(bwframes_folder)))
+    #     processed_frames = 0
+
+    #     for img in os.listdir(str(bwframes_folder)):
+    #         img_path = bwframes_folder / img
+
+    #         if os.path.isfile(str(img_path)):
+    #             color_image = self.vis.get_transformed_image(
+    #                 str(img_path), render_factor=render_factor, post_process=post_process, watermarked=watermarked
+    #             )
+    #             color_image.save(str(colorframes_folder / img))
+    #             processed_frames += 1
+
+    #             # Calculate progress
+    #             progress = (processed_frames / total_frames) * 100
+
+    #             # Send progress update to all active WebSocket connections
+    #             await manager.broadcast({"progress": progress})
+
 
     def _build_video(self, source_path: Path) -> Path:
         colorized_path = self.result_folder / (

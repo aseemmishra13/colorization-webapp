@@ -43,3 +43,12 @@ next-env.d.ts
 *.pt
 
 .pt
+
+.pth
+
+*.pth
+
+/bwframes
+/colorframes
+backend/video/result/input_video.mp4
+backend/video/result/input_video_no_audio.mp4
